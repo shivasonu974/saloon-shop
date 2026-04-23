@@ -463,19 +463,57 @@ async function startServer() {
   });
 
   app.post("/api/admin/services", verifyAdminToken, async (req, res) => {
-    // Reuse the main route handler
-    req.url = "/api/services";
-    app.handle(req, res);
+    // Forward to main POST /api/services handler
+    try {
+      const { title, category, description, price, image } = req.body;
+
+      if (!title || !category) return res.status(400).json({ message: "Service title and category are required" });
+
+      const { data: existing } = await supabase.from("services").select("id");
+      const id = createServiceId(title, (existing || []).map((s: any) => s.id));
+
+      const { data, error } = await supabase
+        .from("services")
+        .insert([{ id, category, title, description, price, image }])
+        .select()
+        .single();
+
+      if (error) return res.status(400).json({ message: error.message });
+      res.status(201).json(data);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message || "Failed to create service" });
+    }
   });
 
   app.put("/api/admin/services/:id", verifyAdminToken, async (req, res) => {
-    req.url = `/api/services/${req.params.id}`;
-    app.handle(req, res);
+    // Forward to main PUT /api/services/:id handler
+    try {
+      const { id } = req.params;
+      const title = normalizeOptionalString(req.body.title || req.body.name);
+      const category = normalizeOptionalString(req.body.category);
+      const description = normalizeOptionalString(req.body.description);
+      const price = normalizeOptionalString(req.body.price);
+      const image = normalizeOptionalString(req.body.image);
+
+      if (!title || !category) return res.status(400).json({ message: "Service title and category are required" });
+
+      const update: any = { title, category, description, price };
+      if (image) update.image = image;
+
+      const { data, error } = await supabase.from("services").update(update).eq("id", id).select().single();
+      if (error || !data) return res.status(404).json({ message: "Service not found" });
+      res.json(data);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message || "Failed to update service" });
+    }
   });
 
   app.delete("/api/admin/services/:id", verifyAdminToken, async (req, res) => {
-    req.url = `/api/services/${req.params.id}`;
-    app.handle(req, res);
+    // Forward to main DELETE /api/services/:id handler
+    const { id } = req.params;
+    const { error } = await supabase.from("services").delete().eq("id", id);
+    if (error) return res.status(404).json({ message: "Service not found" });
+    res.json({ message: "Service deleted" });
   });
 
   // ============ PRICING (ADMIN) ============
