@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "Booking": {
+      "title": "Booking",
+      "description": "An appointment booked by a customer.",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string", "description": "Name of the customer" },
+        "customerEmail": { "type": "string", "format": "email", "description": "Email of the customer" },
+        "customerPhone": { "type": "string", "description": "Phone number of the customer" },
+        "serviceId": { "type": "string", "description": "ID of the service booked" },
+        "serviceTitle": { "type": "string", "description": "Title of the service" },
+        "date": { "type": "string", "format": "date", "description": "Date of the appointment (YYYY-MM-DD)" },
+        "slot": { "type": "string", "description": "Time slot of the appointment" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"], "description": "Booking status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the booking was created" }
+      },
+      "required": ["customerName", "customerEmail", "customerPhone", "serviceId", "date", "slot", "status", "createdAt"]
+    },
+    "Slot": {
+      "title": "Slot",
+      "description": "An occupied time slot.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "slot": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Private collection of all salon appointments."
+    },
+    "slots/{slotId}": {
+      "schema": "Slot",
+      "description": "Public collection of occupied slots for availability checking."
+    }
+  }
+}
