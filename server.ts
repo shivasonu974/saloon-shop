@@ -13,11 +13,15 @@ const __dirname = path.dirname(__filename);
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// Graceful initialization - don't crash if missing, but log warning
+let supabase: any = null;
 if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env");
+  console.warn("⚠️  WARNING: Supabase credentials not configured. API endpoints will not work.");
+  console.warn("   Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env file");
+} else {
+  supabase = createClient(supabaseUrl, supabaseServiceKey);
+  console.log("✅ Supabase client initialized");
 }
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // ============ ADMIN CREDENTIALS ============
 const adminCredentials = {
@@ -93,6 +97,16 @@ const corsMiddleware = (req: express.Request, res: express.Response, next: expre
 
   if (req.method === "OPTIONS") {
     return res.sendStatus(200);
+  }
+  next();
+};
+
+// Helper to check if Supabase is available
+const requireSupabase = (req: any, res: express.Response, next: express.NextFunction) => {
+  if (!supabase) {
+    return res.status(503).json({ 
+      message: "Database service temporarily unavailable. Please try again later." 
+    });
   }
   next();
 };
@@ -186,6 +200,9 @@ async function startServer() {
 
   // Get all services
   app.get("/api/services", async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ message: "Database service unavailable" });
+    }
     const { data, error } = await supabase.from("services").select("*").order("created_at");
     if (error) return res.status(500).json({ message: error.message });
     res.json(data);
@@ -193,6 +210,9 @@ async function startServer() {
 
   // Get booked slots for a date
   app.get("/api/availability", async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ message: "Database service unavailable" });
+    }
     const date = String(req.query.date || "");
     if (!date) return res.status(400).json({ message: "Date is required" });
 
@@ -208,6 +228,9 @@ async function startServer() {
 
   // Create a new booking
   app.post("/api/book", async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ message: "Booking service temporarily unavailable" });
+    }
     try {
       const { customerName, customerEmail, customerPhone, serviceId, serviceTitle, date, slot } = req.body;
 
@@ -270,6 +293,9 @@ async function startServer() {
 
   // Get booking status
   app.get("/api/book/status/:id", async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ message: "Database service unavailable" });
+    }
     const { id } = req.params;
     const { data, error } = await supabase.from("bookings").select("*").eq("id", id).single();
 
@@ -532,6 +558,8 @@ async function startServer() {
   });
 
   // ============ VITE MIDDLEWARE ============
+  console.log(`📊 Environment: NODE_ENV=${process.env.NODE_ENV}`);
+  
   if (process.env.NODE_ENV !== "production") {
     console.log("🔧 Running in DEVELOPMENT mode with Vite");
     const vite = await createViteServer({
@@ -540,33 +568,60 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
+    // PRODUCTION MODE: Serve pre-built React frontend
     const distPath = path.join(process.cwd(), "dist");
     console.log("📦 Running in PRODUCTION mode");
     console.log(`📁 Serving static files from: ${distPath}`);
     
-    // Check if dist directory exists
-    const fs = await import("fs");
-    if (!fs.existsSync(distPath)) {
-      console.error(`❌ ERROR: dist directory not found at ${distPath}`);
-      console.error("Available directories:", fs.readdirSync(process.cwd()));
+    // Verify dist directory exists
+    try {
+      const fs = await import("fs");
+      if (!fs.existsSync(distPath)) {
+        console.warn(`⚠️  WARNING: dist directory not found at ${distPath}`);
+        console.warn(`   Current working directory: ${process.cwd()}`);
+        console.warn(`   Available files: ${fs.readdirSync(process.cwd()).join(", ")}`);
+      } else {
+        const indexPath = path.join(distPath, "index.html");
+        if (!fs.existsSync(indexPath)) {
+          console.warn(`⚠️  WARNING: dist/index.html not found`);
+        } else {
+          console.log(`✅ dist/index.html found`);
+        }
+      }
+    } catch (err) {
+      console.warn(`⚠️  Could not verify dist directory:`, err);
     }
     
-    app.use(express.static(distPath));
+    // Serve static files (CSS, JS, images, etc.)
+    app.use(express.static(distPath, {
+      maxAge: "1d",
+      etag: false
+    }));
+    
+    // Serve index.html for all unmatched routes (SPA routing)
     app.get("*", (req, res) => {
       const indexPath = path.join(distPath, "index.html");
-      console.log(`📄 Serving spa route for: ${req.path} -> ${indexPath}`);
+      // Don't log every single route request to avoid spam
+      if (!req.path.startsWith("/api")) {
+        console.log(`🌐 SPA route: ${req.path}`);
+      }
       res.sendFile(indexPath, (err) => {
         if (err) {
           console.error(`❌ Error serving index.html:`, err.message);
-          res.status(404).json({ error: "Not found" });
+          res.status(404).send("Not found");
         }
       });
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
-    console.log(`📊 Database: Supabase (${supabaseUrl})`);
+    console.log(`\n✅ Server running on http://0.0.0.0:${PORT}`);
+    if (supabase) {
+      console.log(`📊 Database: Supabase connected (${supabaseUrl})`);
+    } else {
+      console.log(`⚠️  Database: Supabase NOT connected (APIs unavailable)`);
+    }
+    console.log(`\n🌍 Open https://street-saloon.onrender.com in your browser\n`);
   });
 }
 
