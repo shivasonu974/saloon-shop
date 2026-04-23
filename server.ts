@@ -533,6 +533,7 @@ async function startServer() {
 
   // ============ VITE MIDDLEWARE ============
   if (process.env.NODE_ENV !== "production") {
+    console.log("🔧 Running in DEVELOPMENT mode with Vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -540,15 +541,32 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
+    console.log("📦 Running in PRODUCTION mode");
+    console.log(`📁 Serving static files from: ${distPath}`);
+    
+    // Check if dist directory exists
+    const fs = await import("fs");
+    if (!fs.existsSync(distPath)) {
+      console.error(`❌ ERROR: dist directory not found at ${distPath}`);
+      console.error("Available directories:", fs.readdirSync(process.cwd()));
+    }
+    
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      console.log(`📄 Serving spa route for: ${req.path} -> ${indexPath}`);
+      res.sendFile(indexPath, (err) => {
+        if (err) {
+          console.error(`❌ Error serving index.html:`, err.message);
+          res.status(404).json({ error: "Not found" });
+        }
+      });
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Database: Supabase (${supabaseUrl})`);
+    console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
+    console.log(`📊 Database: Supabase (${supabaseUrl})`);
   });
 }
 
