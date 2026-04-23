@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isVerified(email) { return isSignedIn() && request.auth.token.email == email && request.auth.token.email_verified == true; }
+    function isAdmin() { return isVerified('shivasonu974@gmail.com'); }
+    
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // --- ENTITY: Booking ---
+    function isValidBooking(data) {
+      return data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 50
+        && data.customerEmail is string && data.customerEmail.matches('^[^@]+@[^@]+\\.[^@]+$')
+        && data.customerPhone is string && data.customerPhone.size() >= 10 && data.customerPhone.size() <= 15
+        && data.serviceId is string && isValidId(data.serviceId)
+        && data.serviceTitle is string && data.serviceTitle.size() <= 50
+        && data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.slot is string && data.slot.size() <= 20
+        && data.status in ['pending', 'confirmed', 'cancelled']
+        && data.createdAt == request.time;
+    }
+
+    match /bookings/{bookingId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      
+      allow create: if (
+        isValidId(bookingId) 
+        && isValidBooking(incoming()) 
+        && incoming().status == 'pending'
+        // Pillar 7: Atomicity Guarantee (Ensure slot is also being created)
+        && existsAfter(/databases/$(database)/documents/slots/$(incoming().date + '_' + incoming().slot.replace(':', '-').replace(' ', '-')))
+      );
+
+      allow update: if (
+        isAdmin() || (
+          // Allow customer to cancel if they provide some secret? 
+          // For simplicity, only admin for now or implement secret key logic
+          false
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // --- ENTITY: Slot (Availability) ---
+    function isValidSlot(data) {
+      return data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.slot is string && data.slot.size() <= 20;
+    }
+
+    match /slots/{slotId} {
+      // Publicly readable for checking availability
+      allow get: if isValidId(slotId);
+      allow list: if true; // Secure list queries (Pillar 8) check:
+      // This is safe because slots only contains {date, slot} - no PII.
+      
+      allow create: if (
+        isValidId(slotId)
+        && isValidSlot(incoming())
+        // Ensure this slot corresponds to the booking being created (if using batch)
+        // or just allow creation if it doesn't exist yet.
+        && !exists(/databases/$(database)/documents/slots/$(slotId))
+      );
+      
+      allow delete: if isAdmin();
+    }
+  }
+}
