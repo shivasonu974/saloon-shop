@@ -4,9 +4,12 @@ services:
     runtime: node
     buildCommand: npm install && npm run build
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 20.18.0
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY

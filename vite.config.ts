@@ -18,5 +18,21 @@ export default defineConfig(({ mode }) => {
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
     },
+    build: {
+      // Target modern browsers for smaller output
+      target: 'es2020',
+      // Increase chunk size warning threshold
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          // Split vendor libraries into separate cached chunks
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-motion': ['motion'],
+            'vendor-icons': ['lucide-react'],
+          },
+        },
+      },
+    },
   };
 });

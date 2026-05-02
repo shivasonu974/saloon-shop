@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Trash2, RefreshCw, CheckCircle, XCircle, Loader, Clock } from 'lucide-react';
+import { Trash2, RefreshCw, CheckCircle, XCircle, Loader, Clock, Copy, Check } from 'lucide-react';
 
 type BookingStatus = 'pending' | 'approved' | 'rejected';
 
@@ -37,6 +37,14 @@ export default function AdminBookings() {
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyBookingId = (id: string) => {
+    navigator.clipboard.writeText(id).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  };
 
   useEffect(() => {
     fetchBookings();
@@ -234,6 +242,7 @@ export default function AdminBookings() {
           <table className="w-full">
             <thead>
               <tr className="bg-zinc-900 border-b border-gold/10">
+                <th className="px-6 py-4 text-left text-sm font-bold text-gold">Booking ID</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-gold">Customer</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-gold">Phone</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-gold">Service</th>
@@ -251,6 +260,20 @@ export default function AdminBookings() {
                   transition={{ delay: idx * 0.03 }}
                   className="border-b border-zinc-800 hover:bg-zinc-900/50 transition-colors"
                 >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-xs text-gold bg-gold/10 border border-gold/20 px-2 py-1 rounded-md">
+                        {booking.id.slice(0, 8)}
+                      </span>
+                      <button
+                        onClick={() => copyBookingId(booking.id)}
+                        className="p-1 hover:bg-zinc-800 rounded transition-colors text-zinc-500 hover:text-gold"
+                        title="Copy full booking ID"
+                      >
+                        {copiedId === booking.id ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+                      </button>
+                    </div>
+                  </td>
                   <td className="px-6 py-4">
                     <div>
                       <p className="font-medium">{booking.customerName}</p>
