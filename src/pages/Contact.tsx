@@ -64,7 +64,7 @@ export default function Contact() {
                 { 
                   icon: Clock, 
                   title: 'Working Hours', 
-                  desc: 'Mon - Sun: 10:00 AM - 08:30 PM' 
+                  desc: 'Mon - Sun: 10:00 AM - 11:00 PM' 
                 },
               ].map((item, i) => (
                 <a 

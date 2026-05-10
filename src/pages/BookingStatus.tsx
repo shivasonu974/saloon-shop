@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { motion } from 'motion/react';
-import { Search, Calendar, Clock, CheckCircle, Clock as ClockIcon, XCircle } from 'lucide-react';
+import { Search, Calendar, Clock, CheckCircle, Clock as ClockIcon, XCircle, Copy, Check, AlertCircle } from 'lucide-react';
 
 interface BookingStatusData {
   id: string;
@@ -17,11 +17,27 @@ export default function BookingStatus() {
   const [error, setError] = useState<string | null>(null);
   const [bookingData, setBookingData] = useState<BookingStatusData | null>(null);
   const [searched, setSearched] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+  const [inputError, setInputError] = useState<string | null>(null);
+
+  const validateBookingId = (id: string): boolean => {
+    const trimmed = id.trim();
+    if (!trimmed) {
+      setInputError('Please enter a booking ID');
+      return false;
+    }
+    if (!/^SS-[A-Z0-9]{6}$/.test(trimmed)) {
+      setInputError('Booking ID format should be like SS-A3K7X2');
+      return false;
+    }
+    setInputError(null);
+    return true;
+  };
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
-    if (!bookingId.trim()) {
-      setError('Please enter a booking ID');
+    
+    if (!validateBookingId(bookingId)) {
       return;
     }
 
@@ -30,7 +46,7 @@ export default function BookingStatus() {
     setBookingData(null);
 
     try {
-      const response = await fetch(`/api/book/status/${bookingId}`);
+      const response = await fetch(`/api/book/status/${bookingId.trim()}`);
       if (response.ok) {
         const data = await response.json();
         setBookingData(data);
@@ -120,19 +136,37 @@ export default function BookingStatus() {
               </label>
               <input
                 type="text"
-                placeholder="e.g. 1776944299986"
-                className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-4 text-white focus:border-gold outline-none transition-colors"
+                placeholder="e.g. SS-A3K7X2"
+                className={`w-full bg-black/40 border rounded-xl px-4 py-4 text-white focus:border-gold outline-none transition-colors ${
+                  inputError 
+                    ? 'border-red-500/50' 
+                    : 'border-white/5'
+                }`}
                 value={bookingId}
-                onChange={(e) => setBookingId(e.target.value)}
+                onChange={(e) => {
+                  setBookingId(e.target.value);
+                  if (e.target.value) {
+                    validateBookingId(e.target.value);
+                  } else {
+                    setInputError(null);
+                  }
+                }}
               />
-              <p className="text-xs text-zinc-500">
-                You received this ID when you submitted your booking
-              </p>
+              {inputError && (
+                <p className="text-xs text-red-400 flex items-center gap-1">
+                  <AlertCircle size={12} /> {inputError}
+                </p>
+              )}
+              {!inputError && (
+                <p className="text-xs text-zinc-500">
+                  You received this ID when you submitted your booking
+                </p>
+              )}
             </div>
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !bookingId.trim()}
               className="w-full btn-gold py-4 rounded font-bold uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {loading ? 'Searching...' : 'Check Status'}
@@ -199,8 +233,18 @@ export default function BookingStatus() {
             </div>
 
             <div className="space-y-3 text-sm text-zinc-400">
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-zinc-500 flex items-center gap-2">
                 Booking ID: <span className="font-mono text-gold">{bookingData.id}</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(bookingData.id);
+                    setCopiedId(true);
+                    setTimeout(() => setCopiedId(false), 2000);
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gold/10 border border-gold/20 text-gold hover:bg-gold/20 transition-colors text-[10px] font-bold uppercase tracking-wider"
+                >
+                  {copiedId ? <><Check size={10} /> Copied</> : <><Copy size={10} /> Copy</>}
+                </button>
               </p>
               <p>
                 For any queries, please contact us at{' '}

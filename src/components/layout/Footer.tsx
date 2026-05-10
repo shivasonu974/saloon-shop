@@ -75,7 +75,7 @@ export default function Footer() {
           <div className="flex flex-wrap justify-center gap-6">
             <span>Nizamabad, Telangana</span>
             <a href="tel:+916301458914" className="hover:text-gold transition-colors">+91 6301458914</a>
-            <span>Open: 10AM - 8:30PM</span>
+            <span>Open: 10AM - 11PM</span>
           </div>
           <div className="flex gap-4">
             <span>Instagram</span>

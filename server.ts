@@ -102,6 +102,16 @@ const createServiceId = (title: string, existingIds: string[], currentId?: strin
   return candidate;
 };
 
+// Generate unique short booking ID (e.g., SS-A3K7X2)
+const generateBookingId = (): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I to avoid confusion
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return `SS-${code}`;
+};
+
 // ============ MIDDLEWARE ============
 
 const verifyAdminToken = (req: any, res: express.Response, next: express.NextFunction) => {
@@ -141,6 +151,104 @@ const requireSupabase = (_req: any, res: express.Response, next: express.NextFun
   next();
 };
 
+// ============ EMAIL SERVICE ============
+
+const sendDirectEmail = async (
+  to: string,
+  subject: string,
+  htmlContent: string,
+): Promise<boolean> => {
+  // Check if direct SMTP is configured
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    return false;
+  }
+
+  try {
+    // Use Supabase's built-in email sending if available
+    const supabase = getSupabase();
+    if (supabase) {
+      const { error } = await supabase.auth.admin.generateLink({
+        type: "email_change",
+        email: to,
+        newEmail: to,
+      });
+
+      // If Supabase can send, it would work here
+      // For now, we'll fall through to webhook approach
+    }
+
+    // For production, users should use EMAIL_WEBHOOK_URL or configure nodemailer
+    return false;
+  } catch (error: any) {
+    console.warn("[EMAIL] Direct email send failed:", error.message);
+    return false;
+  }
+};
+
+const generateBookingConfirmationEmail = (booking: any): string => {
+  const bookingDate = new Date(booking.date);
+  const formattedDate = bookingDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  return `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); padding: 24px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
+        <h1 style="color: #c5a028; margin: 0; font-size: 28px;">Booking Confirmed!</h1>
+        <p style="color: #fff; margin: 8px 0 0 0;">Your appointment is confirmed</p>
+      </div>
+
+      <div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+        <p style="margin-top: 0;">Hi ${booking.customer_name},</p>
+        <p>Your booking request has been <strong>approved</strong> by our admin. We look forward to serving you!</p>
+      </div>
+
+      <div style="background: #fff; border: 2px solid #c5a028; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+        <h2 style="color: #c5a028; margin-top: 0;">Booking Details</h2>
+        
+        <div style="margin-bottom: 12px;">
+          <strong style="color: #666;">Booking ID:</strong>
+          <div style="font-family: monospace; background: #f0f0f0; padding: 8px; border-radius: 4px; margin-top: 4px; font-size: 14px;">
+            ${booking.id}
+          </div>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <strong style="color: #666;">Service:</strong>
+          <p style="margin: 4px 0;">${booking.service_title}</p>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <strong style="color: #666;">Date:</strong>
+          <p style="margin: 4px 0;">${formattedDate}</p>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <strong style="color: #666;">Time:</strong>
+          <p style="margin: 4px 0;">${booking.slot}</p>
+        </div>
+
+        <div>
+          <strong style="color: #666;">Phone:</strong>
+          <p style="margin: 4px 0;">${booking.customer_phone}</p>
+        </div>
+      </div>
+
+      <div style="background: #f0f8ff; padding: 16px; border-left: 4px solid #c5a028; border-radius: 4px; margin-bottom: 24px;">
+        <p style="margin: 0;"><strong>Please arrive 10 minutes early</strong> to ensure a smooth check-in process.</p>
+      </div>
+
+      <div style="text-align: center; color: #666; font-size: 12px; margin-top: 32px; padding-top: 16px; border-top: 1px solid #ddd;">
+        <p>© 2024 Street Saloon. All rights reserved.</p>
+        <p>If you need to reschedule or cancel, please contact us directly.</p>
+      </div>
+    </div>
+  `;
+};
+
 // ============ NOTIFICATIONS ============
 
 const postNotificationWebhook = async (
@@ -177,6 +285,9 @@ const sendBookingConfirmationNotification = async (booking: any) => {
     date: booking.date,
     slot: booking.slot,
     message,
+    // Include HTML email content for services that support it
+    emailHtml: generateBookingConfirmationEmail(booking),
+    subject: `Booking Confirmed - ${booking.id}`,
   };
 
   console.log(`[USER NOTIFICATION] ${message} -> booking ${booking.id}`);
@@ -193,7 +304,10 @@ const sendBookingConfirmationNotification = async (booking: any) => {
   if (process.env.EMAIL_WEBHOOK_URL) {
     deliveryTasks.push(
       postNotificationWebhook(process.env.EMAIL_WEBHOOK_URL, process.env.EMAIL_WEBHOOK_TOKEN, payload)
-        .then(() => { channels.push("email"); }),
+        .then((res) => { 
+          channels.push("email");
+          console.log(`[EMAIL] Booking confirmation sent to ${booking.customer_email}`);
+        }),
     );
   }
 
@@ -294,7 +408,7 @@ app.post("/api/book", requireSupabase, async (req, res) => {
     }
 
     const newBooking = {
-      id: Date.now().toString(),
+      id: generateBookingId(),
       customer_name: customerName,
       customer_email: customerEmail,
       customer_phone: customerPhone,

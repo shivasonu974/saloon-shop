@@ -263,7 +263,7 @@ export default function AdminBookings() {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-xs text-gold bg-gold/10 border border-gold/20 px-2 py-1 rounded-md">
-                        {booking.id.slice(0, 8)}
+                        {booking.id}
                       </span>
                       <button
                         onClick={() => copyBookingId(booking.id)}

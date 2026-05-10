@@ -39,8 +39,8 @@ export const OFFERS = [
 export const GALLERY_IMAGES = [
   'https://res.cloudinary.com/dqhbdoh8t/image/upload/f_auto,q_auto/5c427d0d-bc63-41dc-8eca-0fa1e8370cff_xl7o38',
   'https://res.cloudinary.com/dqhbdoh8t/image/upload/f_auto,q_auto/h_ojy6rm',
-  'https://res.cloudinary.com/dqhbdoh8t/image/upload/f_auto,q_auto/5c427d0d-bc63-41dc-8eca-0fa1e8370cff_tsximf',
   'https://res.cloudinary.com/dqhbdoh8t/image/upload/f_auto,q_auto/s_k82ruz',
   'https://res.cloudinary.com/dqhbdoh8t/image/upload/f_auto,q_auto/WhatsApp_Image_2026-04-23_at_3.38.07_PM_1_gcys1h',
   'https://res.cloudinary.com/dqhbdoh8t/image/upload/f_auto,q_auto/WhatsApp_Image_2026-04-23_at_3.38.08_PM_ntawwi',
+  'https://res.cloudinary.com/dqhbdoh8t/image/upload/f_auto,q_auto/WhatsApp_Image_2026-04-23_at_3.38.07_PM_mqlney'
 ];

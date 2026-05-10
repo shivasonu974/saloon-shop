@@ -13,6 +13,8 @@ import {
   Loader,
   Search,
   XCircle,
+  Copy,
+  Check,
 } from 'lucide-react';
 import {
   BookingRecord,
@@ -22,17 +24,23 @@ import {
 } from '../services/bookingService';
 import { useServices } from '../hooks/useServices';
 import { getOrderedCategories } from '../services/serviceService';
+import { validateBookingForm, getFieldError, ValidationError } from '../lib/validators';
 
 const TIME_SLOTS = [
   '10:00 AM',
   '11:00 AM',
   '12:00 PM',
   '01:00 PM',
+  '02:00 PM',
   '03:00 PM',
   '04:00 PM',
   '05:00 PM',
   '06:00 PM',
   '07:00 PM',
+  '08:00 PM',
+  '09:00 PM',
+  '10:00 PM',
+  '11:00 PM',
 ];
 
 const todayInputValue = () => new Date().toISOString().split('T')[0];
@@ -44,9 +52,11 @@ export default function Booking() {
   const [loading, setLoading] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [success, setSuccess] = useState(false);
   const [booking, setBooking] = useState<BookingRecord | null>(null);
   const [statusMessage, setStatusMessage] = useState('Your request is sent. Waiting for confirmation.');
+  const [copiedId, setCopiedId] = useState(false);
 
   const [formData, setFormData] = useState({
     serviceId: '',
@@ -88,9 +98,19 @@ export default function Booking() {
 
   const handleBooking = async (e: FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setValidationErrors([]);
     setError(null);
 
+    // Validate form
+    const errors = validateBookingForm(formData);
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      const errorMessages = errors.map(err => err.message).join(', ');
+      setError(`Please fix the following: ${errorMessages}`);
+      return;
+    }
+
+    setLoading(true);
     try {
       const newBooking = await createBooking(formData);
       setBooking(newBooking);
@@ -182,8 +202,18 @@ export default function Booking() {
                 <p className="font-medium text-white">{booking.slot}</p>
               </div>
             </div>
-            <p className="text-xs text-zinc-500 mt-5">
+            <p className="text-xs text-zinc-500 mt-5 flex items-center justify-center gap-2">
               Booking ID: <span className="font-mono text-gold">{booking.id}</span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(booking.id);
+                  setCopiedId(true);
+                  setTimeout(() => setCopiedId(false), 2000);
+                }}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gold/10 border border-gold/20 text-gold hover:bg-gold/20 transition-colors text-[10px] font-bold uppercase tracking-wider"
+              >
+                {copiedId ? <><Check size={10} /> Copied</> : <><Copy size={10} /> Copy</>}
+              </button>
             </p>
           </div>
 
@@ -375,11 +405,20 @@ export default function Booking() {
                       <input
                         type="text"
                         required
-                        className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-white focus:border-gold outline-none transition-colors"
+                        className={`w-full bg-black/40 border rounded-xl px-4 py-3 text-white focus:border-gold outline-none transition-colors ${
+                          getFieldError(validationErrors, 'customerName')
+                            ? 'border-red-500/50'
+                            : 'border-white/5'
+                        }`}
                         placeholder="e.g. Rahul Kumar"
                         value={formData.customerName}
                         onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
                       />
+                      {getFieldError(validationErrors, 'customerName') && (
+                        <p className="text-xs text-red-400 flex items-center gap-1">
+                          <AlertCircle size={12} /> {getFieldError(validationErrors, 'customerName')}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] uppercase tracking-widest text-white/30 font-bold flex items-center gap-2">
@@ -388,11 +427,20 @@ export default function Booking() {
                       <input
                         type="tel"
                         required
-                        className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-white focus:border-gold outline-none transition-colors"
+                        className={`w-full bg-black/40 border rounded-xl px-4 py-3 text-white focus:border-gold outline-none transition-colors ${
+                          getFieldError(validationErrors, 'customerPhone')
+                            ? 'border-red-500/50'
+                            : 'border-white/5'
+                        }`}
                         placeholder="e.g. 6301458914"
                         value={formData.customerPhone}
                         onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
                       />
+                      {getFieldError(validationErrors, 'customerPhone') && (
+                        <p className="text-xs text-red-400 flex items-center gap-1">
+                          <AlertCircle size={12} /> {getFieldError(validationErrors, 'customerPhone')}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -403,11 +451,20 @@ export default function Booking() {
                     <input
                       type="email"
                       required
-                      className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-white focus:border-gold outline-none transition-colors"
+                      className={`w-full bg-black/40 border rounded-xl px-4 py-3 text-white focus:border-gold outline-none transition-colors ${
+                        getFieldError(validationErrors, 'customerEmail')
+                          ? 'border-red-500/50'
+                          : 'border-white/5'
+                      }`}
                       placeholder="e.g. rahul@example.com"
                       value={formData.customerEmail}
                       onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })}
                     />
+                    {getFieldError(validationErrors, 'customerEmail') && (
+                      <p className="text-xs text-red-400 flex items-center gap-1">
+                        <AlertCircle size={12} /> {getFieldError(validationErrors, 'customerEmail')}
+                      </p>
+                    )}
                   </div>
 
                   <div className="bg-gold/5 border border-gold/10 p-6 rounded-2xl mb-8">
