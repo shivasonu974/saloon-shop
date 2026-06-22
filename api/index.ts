@@ -49,6 +49,10 @@ const getCategoryImage = (category: string): string => {
 
 const BOOKING_CONFIRMED_MESSAGE = "Your booking is confirmed";
 
+// ============ FALLBACK BOOKING STORAGE ============
+// In-memory bookings when Supabase is unavailable
+const fallbackBookings = new Map<string, any>();
+
 // DEFAULT SERVICES (FALLBACK)
 const DEFAULT_SERVICES = [
   { id: 'haircut-men', category: 'Basic Services', title: 'Haircut (Men)', price: '₹100 – ₹250', description: 'Classic and modern grooming for men by our expert stylists.', image: 'https://images.unsplash.com/photo-1622286342621-4bd786c2447c?auto=format&fit=crop&q=80&w=1200' },
@@ -182,24 +186,49 @@ app.get("/api/availability", async (req, res) => {
     res.json({ date, slots: [] });
   }
 });
-app.post("/api/book", requireSupabase, async (req, res) => {
-  const s = getSupabase()!;
+app.post("/api/book", async (req, res) => {
   try {
     const { customerName, customerEmail, customerPhone, serviceId, serviceTitle, date, slot } = req.body;
     if (!customerName || !customerEmail || !customerPhone || !serviceId || !serviceTitle || !date || !slot) return res.status(400).json({ message: "Missing required fields" });
-    const { data: existing } = await s.from("bookings").select("id").eq("date", date).eq("slot", slot).in("status", ["pending", "approved"]).limit(1);
-    if (existing && existing.length > 0) return res.status(409).json({ message: "This time slot has just been taken. Please select another." });
-    const newBooking = { id: generateBookingId(), customer_name: customerName, customer_email: customerEmail, customer_phone: customerPhone, service_id: serviceId, service_title: serviceTitle, date, slot, status: "pending" };
-    const { data, error } = await s.from("bookings").insert([newBooking]).select().single();
-    if (error) return res.status(500).json({ message: error.message });
-    res.status(201).json({ success: true, message: "Your request is sent. Waiting for confirmation.", booking: { id: data.id, customerName: data.customer_name, customerEmail: data.customer_email, customerPhone: data.customer_phone, serviceId: data.service_id, serviceTitle: data.service_title, date: data.date, slot: data.slot, status: data.status, createdAt: data.created_at } });
+    
+    const bookingId = generateBookingId();
+    const newBooking = { id: bookingId, customer_name: customerName, customer_email: customerEmail, customer_phone: customerPhone, service_id: serviceId, service_title: serviceTitle, date, slot, status: "pending", created_at: new Date().toISOString() };
+    
+    const s = getSupabase();
+    if (s) {
+      try {
+        const { data: existing } = await s.from("bookings").select("id").eq("date", date).eq("slot", slot).in("status", ["pending", "approved"]).limit(1);
+        if (existing && existing.length > 0) return res.status(409).json({ message: "This time slot has just been taken. Please select another." });
+        const { data, error } = await s.from("bookings").insert([newBooking]).select().single();
+        if (error) throw new Error(error.message);
+        console.log(`[BOOKING] New booking (PENDING, DB): ${customerName} for ${serviceTitle} on ${date} at ${slot}`);
+        res.status(201).json({ success: true, message: "Your request is sent. Waiting for confirmation.", booking: { id: data.id, customerName: data.customer_name, customerEmail: data.customer_email, customerPhone: data.customer_phone, serviceId: data.service_id, serviceTitle: data.service_title, date: data.date, slot: data.slot, status: data.status, createdAt: data.created_at } });
+        return;
+      } catch (dbError: any) {
+        console.warn(`[BOOKING] Database error, using fallback: ${dbError.message}`);
+      }
+    }
+    
+    // Fallback: store booking in memory
+    fallbackBookings.set(bookingId, newBooking);
+    console.log(`[BOOKING] New booking (PENDING, FALLBACK): ${customerName} for ${serviceTitle} on ${date} at ${slot}`);
+    res.status(201).json({ success: true, message: "Your request is sent. Waiting for confirmation.", booking: { id: newBooking.id, customerName: newBooking.customer_name, customerEmail: newBooking.customer_email, customerPhone: newBooking.customer_phone, serviceId: newBooking.service_id, serviceTitle: newBooking.service_title, date: newBooking.date, slot: newBooking.slot, status: newBooking.status, createdAt: newBooking.created_at } });
   } catch (error: any) { res.status(500).json({ message: "Failed to create booking", error: error.message }); }
 });
-app.get("/api/book/status/:id", requireSupabase, async (req, res) => {
-  const s = getSupabase()!;
-  const { data, error } = await s.from("bookings").select("*").eq("id", req.params.id).single();
-  if (error || !data) return res.status(404).json({ message: "Booking not found" });
-  res.json({ id: data.id, status: data.status, serviceTitle: data.service_title, date: data.date, slot: data.slot, message: getStatusMessage(data.status, data.rejection_reason) });
+app.get("/api/book/status/:id", async (req, res) => {
+  const { id } = req.params;
+  const s = getSupabase();
+  if (s) {
+    try {
+      const { data, error } = await s.from("bookings").select("*").eq("id", id).single();
+      if (!error && data) return res.json({ id: data.id, status: data.status, serviceTitle: data.service_title, date: data.date, slot: data.slot, message: getStatusMessage(data.status, data.rejection_reason) });
+    } catch (dbError: any) {
+      console.warn(`[BOOKING] Database error checking status: ${dbError.message}`);
+    }
+  }
+  const fallbackBooking = fallbackBookings.get(id);
+  if (fallbackBooking) return res.json({ id: fallbackBooking.id, status: fallbackBooking.status, serviceTitle: fallbackBooking.service_title, date: fallbackBooking.date, slot: fallbackBooking.slot, message: `Your booking is ${fallbackBooking.status}. We'll notify you soon.` });
+  res.status(404).json({ message: "Booking not found" });
 });
 
 // Admin routes

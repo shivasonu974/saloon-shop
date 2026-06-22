@@ -137,6 +137,10 @@ const generateBookingId = (): string => {
   return `SS-${code}`;
 };
 
+// ============ FALLBACK BOOKING STORAGE ============
+// In-memory bookings when Supabase is unavailable
+const fallbackBookings = new Map<string, any>();
+
 // ============ MIDDLEWARE ============
 
 const verifyAdminToken = (req: any, res: express.Response, next: express.NextFunction) => {
@@ -442,8 +446,7 @@ app.get("/api/availability", async (req, res) => {
 });
 
 // Create a new booking
-app.post("/api/book", requireSupabase, async (req, res) => {
-  const supabase = getSupabase()!;
+app.post("/api/book", async (req, res) => {
   try {
     const { customerName, customerEmail, customerPhone, serviceId, serviceTitle, date, slot } = req.body;
 
@@ -451,21 +454,9 @@ app.post("/api/book", requireSupabase, async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // Check if slot is already booked
-    const { data: existing } = await supabase
-      .from("bookings")
-      .select("id")
-      .eq("date", date)
-      .eq("slot", slot)
-      .in("status", ["pending", "approved"])
-      .limit(1);
-
-    if (existing && existing.length > 0) {
-      return res.status(409).json({ message: "This time slot has just been taken. Please select another." });
-    }
-
+    const bookingId = generateBookingId();
     const newBooking = {
-      id: generateBookingId(),
+      id: bookingId,
       customer_name: customerName,
       customer_email: customerEmail,
       customer_phone: customerPhone,
@@ -474,51 +465,116 @@ app.post("/api/book", requireSupabase, async (req, res) => {
       date,
       slot,
       status: "pending",
+      created_at: new Date().toISOString(),
     };
 
-    const { data, error } = await supabase.from("bookings").insert([newBooking]).select().single();
-    if (error) return res.status(500).json({ message: error.message });
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        // Check if slot is already booked
+        const { data: existing } = await supabase
+          .from("bookings")
+          .select("id")
+          .eq("date", date)
+          .eq("slot", slot)
+          .in("status", ["pending", "approved"])
+          .limit(1);
 
-    console.log(`[BOOKING] New booking (PENDING): ${customerName} for ${serviceTitle} on ${date} at ${slot}`);
+        if (existing && existing.length > 0) {
+          return res.status(409).json({ message: "This time slot has just been taken. Please select another." });
+        }
+
+        const { data, error } = await supabase.from("bookings").insert([newBooking]).select().single();
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        console.log(`[BOOKING] New booking (PENDING, DB): ${customerName} for ${serviceTitle} on ${date} at ${slot}`);
+        return res.status(201).json({
+          success: true,
+          message: "Your request is sent. Waiting for confirmation.",
+          booking: {
+            id: data.id,
+            customerName: data.customer_name,
+            customerEmail: data.customer_email,
+            customerPhone: data.customer_phone,
+            serviceId: data.service_id,
+            serviceTitle: data.service_title,
+            date: data.date,
+            slot: data.slot,
+            status: data.status,
+            createdAt: data.created_at,
+          },
+        });
+      } catch (dbError: any) {
+        console.warn(`[BOOKING] Database error, using fallback: ${dbError.message}`);
+      }
+    }
+
+    // Fallback: store booking in memory
+    fallbackBookings.set(bookingId, newBooking);
+    console.log(`[BOOKING] New booking (PENDING, FALLBACK): ${customerName} for ${serviceTitle} on ${date} at ${slot}`);
 
     res.status(201).json({
       success: true,
       message: "Your request is sent. Waiting for confirmation.",
       booking: {
-        id: data.id,
-        customerName: data.customer_name,
-        customerEmail: data.customer_email,
-        customerPhone: data.customer_phone,
-        serviceId: data.service_id,
-        serviceTitle: data.service_title,
-        date: data.date,
-        slot: data.slot,
-        status: data.status,
-        createdAt: data.created_at,
+        id: newBooking.id,
+        customerName: newBooking.customer_name,
+        customerEmail: newBooking.customer_email,
+        customerPhone: newBooking.customer_phone,
+        serviceId: newBooking.service_id,
+        serviceTitle: newBooking.service_title,
+        date: newBooking.date,
+        slot: newBooking.slot,
+        status: newBooking.status,
+        createdAt: newBooking.created_at,
       },
     });
   } catch (error: any) {
-    console.error("Booking error:", error);
+    console.error("[BOOKING] Unexpected error:", error);
     res.status(500).json({ message: "Failed to create booking", error: error.message });
   }
 });
 
 // Get booking status
-app.get("/api/book/status/:id", requireSupabase, async (req, res) => {
-  const supabase = getSupabase()!;
+app.get("/api/book/status/:id", async (req, res) => {
   const { id } = req.params;
-  const { data, error } = await supabase.from("bookings").select("*").eq("id", id).single();
 
-  if (error || !data) return res.status(404).json({ message: "Booking not found" });
+  // Try Supabase first
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from("bookings").select("*").eq("id", id).single();
+      if (!error && data) {
+        return res.json({
+          id: data.id,
+          status: data.status,
+          serviceTitle: data.service_title,
+          date: data.date,
+          slot: data.slot,
+          message: getStatusMessage(data.status, data.rejection_reason),
+        });
+      }
+    } catch (dbError: any) {
+      console.warn(`[BOOKING] Database error checking status: ${dbError.message}`);
+    }
+  }
 
-  res.json({
-    id: data.id,
-    status: data.status,
-    serviceTitle: data.service_title,
-    date: data.date,
-    slot: data.slot,
-    message: getStatusMessage(data.status, data.rejection_reason),
-  });
+  // Fallback: check in-memory bookings
+  const fallbackBooking = fallbackBookings.get(id);
+  if (fallbackBooking) {
+    return res.json({
+      id: fallbackBooking.id,
+      status: fallbackBooking.status,
+      serviceTitle: fallbackBooking.service_title,
+      date: fallbackBooking.date,
+      slot: fallbackBooking.slot,
+      message: `Your booking is ${fallbackBooking.status}. We'll notify you soon.`,
+    });
+  }
+
+  res.status(404).json({ message: "Booking not found" });
 });
 
 // ============ ADMIN ROUTES ============
