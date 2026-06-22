@@ -66,6 +66,31 @@ const getCategoryImage = (category: string): string => {
 
 const BOOKING_CONFIRMED_MESSAGE = "Your booking is confirmed";
 
+// ============ DEFAULT SERVICES (FALLBACK) ============
+// These are served when Supabase is not available
+const DEFAULT_SERVICES = [
+  { id: 'haircut-men', category: 'Basic Services', title: 'Haircut (Men)', price: '₹100 – ₹250', description: 'Classic and modern grooming for men by our expert stylists.', image: 'https://images.unsplash.com/photo-1622286342621-4bd786c2447c?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'haircut-women', category: 'Basic Services', title: 'Haircut (Women)', price: '₹200 – ₹500', description: 'Expertly crafted precision cuts and bespoke styles for women.', image: 'https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'haircut-kids', category: 'Basic Services', title: 'Haircut (Kids)', price: '₹80 – ₹200', description: 'A friendly and enjoyable salon experience for our youngest guests.', image: 'https://images.unsplash.com/photo-1519699047748-de8e457a634e?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'hairwash-cond', category: 'Basic Services', title: 'Hair wash & conditioning', price: '₹100 – ₹200', description: 'Refreshing scalp cleanse followed by premium moisture infusion.', image: 'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'blowdry-styling', category: 'Basic Services', title: 'Blow dry & styling', price: '₹150 – ₹400', description: 'Professional finishing for incredible volume, shine, and hold.', image: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'straightening-temp', category: 'Styling', title: 'Straightening (temporary)', price: '₹200 – ₹500', description: 'Safe and effective flat-iron straightening for a sleek finish.', image: 'https://images.unsplash.com/photo-1580618672591-eb180b1a973f?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'curling-waves', category: 'Styling', title: 'Curling / Waves', price: '₹300 – ₹700', description: 'Glamorous curls or relaxed beach waves with professional tools.', image: 'https://images.unsplash.com/photo-1527799820374-dcf8d9d4a388?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'hair-setting-events', category: 'Styling', title: 'Hair setting (for events)', price: '₹300 – ₹800', description: 'Elegant up-dos and event-ready hair that lasts all night.', image: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'global-color', category: 'Coloring', title: 'Global hair color', price: '₹800 – ₹2000', description: 'Professional full-head coloring for a vibrant and uniform look.', image: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'highlights-lowlights', category: 'Coloring', title: 'Highlights / Lowlights', price: '₹1000 – ₹3000', description: 'Artistic color placement to add dimension and brilliance.', image: 'https://images.unsplash.com/photo-1519415943484-9fa1873496d4?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'balayage-ombre', category: 'Coloring', title: 'Balayage / Ombre', price: '₹1500 – ₹4000', description: 'Seamless hand-painted color transitions and gradients.', image: 'https://images.unsplash.com/photo-1470259078422-826894b933aa?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'root-touchup', category: 'Coloring', title: 'Root touch-up', price: '₹500 – ₹1200', description: 'Flawless color matching for seamless maintenance.', image: 'https://images.unsplash.com/photo-1605497788044-5a32c7078486?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'hair-spa', category: 'Treatments', title: 'Hair spa', price: '₹300 – ₹800', description: 'Deep scalp therapy and hair nourishment for total relaxation.', image: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'keratin-treatment', category: 'Treatments', title: 'Keratin treatment', price: '₹2500 – ₹5000', description: 'Revolutionary protein treatment for frizz-free, smooth hair.', image: 'https://images.unsplash.com/photo-1522338242992-e1a54906a8da?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'smoothening', category: 'Treatments', title: 'Smoothening', price: '₹3000 – ₹6000', description: 'Achieve perfectly manageable and radiant straight hair.', image: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'rebonding', category: 'Treatments', title: 'Rebonding', price: '₹4000 – ₹8000', description: 'Permanent hair straightening for a consistently sleek look.', image: 'https://images.unsplash.com/photo-1596178060671-7a58b93f4c34?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'botox-hair', category: 'Treatments', title: 'Botox hair treatment', price: '₹2000 – ₹5000', description: 'Anti-aging hair fiber repair for extreme shine and volume.', image: 'https://images.unsplash.com/photo-1559599101-f09722fb4948?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'oil-massage', category: 'Care', title: 'Oil massage (champi)', price: '₹50 – ₹150', description: 'Traditional head massage with aromatic herbal scalp oils.', image: 'https://images.unsplash.com/photo-1600334129128-685c5582fd35?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'dandruff-treatment', category: 'Care', title: 'Dandruff treatment', price: '₹200 – ₹600', description: 'Specialized scalp therapy to treat irritation and dandruff.', image: 'https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?auto=format&fit=crop&q=80&w=1200' },
+  { id: 'hairfall-control', category: 'Care', title: 'Hair fall control treatment', price: '₹300 – ₹800', description: 'Targeted root-strengthening therapy to reduce hair thinning.', image: 'https://images.unsplash.com/photo-1519415510236-718bdfcd89c8?auto=format&fit=crop&q=80&w=1200' },
+];
+
 // ============ HELPERS ============
 
 type BookingStatus = "pending" | "approved" | "rejected";
@@ -356,12 +381,28 @@ app.use(corsMiddleware);
 // ============ PUBLIC API ROUTES ============
 
 // Get all services
-app.get("/api/services", requireSupabase, async (_req, res) => {
-  const supabase = getSupabase()!;
-  const { data, error } = await supabase.from("services").select("*").order("created_at");
-  if (error) return res.status(500).json({ message: error.message });
+app.get("/api/services", async (_req, res) => {
+  const supabase = getSupabase();
+  
+  // Try to fetch from Supabase first
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from("services").select("*").order("created_at");
+      if (!error && data && data.length > 0) {
+        const enriched = (data || []).map((service: any) => ({
+          ...service,
+          image: service.image || getCategoryImage(service.category || ""),
+        }));
+        return res.json(enriched);
+      }
+    } catch (err) {
+      console.warn("[SERVICES] Failed to fetch from Supabase:", err);
+    }
+  }
 
-  const enriched = (data || []).map((service: any) => ({
+  // Fallback to default services
+  console.log("[SERVICES] Using fallback default services");
+  const enriched = DEFAULT_SERVICES.map((service: any) => ({
     ...service,
     image: service.image || getCategoryImage(service.category || ""),
   }));
@@ -369,19 +410,35 @@ app.get("/api/services", requireSupabase, async (_req, res) => {
 });
 
 // Get booked slots for a date
-app.get("/api/availability", requireSupabase, async (req, res) => {
-  const supabase = getSupabase()!;
+app.get("/api/availability", async (req, res) => {
   const date = String(req.query.date || "");
   if (!date) return res.status(400).json({ message: "Date is required" });
 
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("slot")
-    .eq("date", date)
-    .in("status", ["pending", "approved"]);
+  const supabase = getSupabase();
+  
+  // If Supabase is not available, return empty slots (all slots available)
+  if (!supabase) {
+    console.log("[AVAILABILITY] Supabase not available, returning empty slots");
+    return res.json({ date, slots: [] });
+  }
 
-  if (error) return res.status(500).json({ message: error.message });
-  res.json({ date, slots: (data || []).map((b: any) => b.slot) });
+  try {
+    const { data, error } = await supabase
+      .from("bookings")
+      .select("slot")
+      .eq("date", date)
+      .in("status", ["pending", "approved"]);
+
+    if (error) {
+      console.warn("[AVAILABILITY] Query error:", error.message);
+      return res.json({ date, slots: [] });
+    }
+    
+    res.json({ date, slots: (data || []).map((b: any) => b.slot) });
+  } catch (err: any) {
+    console.warn("[AVAILABILITY] Exception:", err.message);
+    res.json({ date, slots: [] });
+  }
 });
 
 // Create a new booking
