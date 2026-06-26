@@ -241,48 +241,164 @@ app.post("/api/admin/login", (req, res) => {
   res.status(401).json({ message: "Invalid email or password" });
 });
 const mapBooking = (b: any) => ({ id: b.id, customerName: b.customer_name, customerEmail: b.customer_email, customerPhone: b.customer_phone, serviceTitle: b.service_title, serviceId: b.service_id, date: b.date, slot: b.slot, status: b.status, createdAt: b.created_at, approvedAt: b.approved_at, approvedBy: b.approved_by, rejectedAt: b.rejected_at, rejectionReason: b.rejection_reason });
+const getFallbackAdminBookings = () => Array.from(fallbackBookings.values()).map(mapBooking);
 app.get("/api/admin/stats", verifyAdminToken, async (_req, res) => {
   const s = getSupabase();
-  if (!s) return res.status(503).json({ message: "Database unavailable" });
-  const [br, sr, er] = await Promise.all([s.from("bookings").select("*", { count: "exact", head: true }), s.from("services").select("*", { count: "exact", head: true }), s.from("bookings").select("customer_email")]);
-  res.json({ totalBookings: br.count || 0, totalRevenue: (br.count || 0) * 350, totalServices: sr.count || 0, totalClients: new Set((er.data || []).map((e: any) => e.customer_email)).size });
+  if (!s) {
+    const fallbackBookingCount = fallbackBookings.size;
+    return res.json({ totalBookings: fallbackBookingCount, totalRevenue: fallbackBookingCount * 350, totalServices: DEFAULT_SERVICES.length, totalClients: fallbackBookingCount });
+  }
+  try {
+    const [br, sr, er] = await Promise.all([s.from("bookings").select("*", { count: "exact", head: true }), s.from("services").select("*", { count: "exact", head: true }), s.from("bookings").select("customer_email")]);
+    res.json({ totalBookings: br.count || 0, totalRevenue: (br.count || 0) * 350, totalServices: sr.count || 0, totalClients: new Set((er.data || []).map((e: any) => e.customer_email)).size });
+  } catch (err: any) {
+    console.warn("[ADMIN STATS] Database error, using fallback");
+    const fallbackBookingCount = fallbackBookings.size;
+    res.json({ totalBookings: fallbackBookingCount, totalRevenue: fallbackBookingCount * 350, totalServices: DEFAULT_SERVICES.length, totalClients: fallbackBookingCount });
+  }
 });
 const getAdminBookings = [verifyAdminToken, async (_req: any, res: express.Response) => {
   const s = getSupabase();
-  if (!s) return res.status(503).json({ message: "Database unavailable" });
-  const { data, error } = await s.from("bookings").select("*").order("created_at", { ascending: false });
-  if (error) return res.status(500).json({ message: error.message });
-  res.json((data || []).map(mapBooking));
+  if (!s) {
+    console.log("[ADMIN BOOKINGS] Database unavailable, returning fallback bookings");
+    return res.json(getFallbackAdminBookings());
+  }
+  try {
+    const { data, error } = await s.from("bookings").select("*").order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    res.json((data || []).map(mapBooking));
+  } catch (err: any) {
+    console.warn("[ADMIN BOOKINGS] Database error, returning fallback bookings:", err.message);
+    res.json(getFallbackAdminBookings());
+  }
 }];
 app.get("/api/bookings", ...getAdminBookings);
 app.get("/api/admin/bookings", ...getAdminBookings);
 app.put("/api/book/:id/approve", verifyAdminToken, async (req: any, res) => {
   const s = getSupabase();
-  if (!s) return res.status(503).json({ message: "Database unavailable" });
+  if (!s) {
+    const booking = fallbackBookings.get(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.status === "rejected") return res.status(409).json({ message: "Rejected bookings cannot be approved" });
+    booking.status = "approved";
+    booking.approved_at = new Date().toISOString();
+    booking.approved_by = req.admin.email;
+    delete booking.rejected_at;
+    delete booking.rejection_reason;
+    return res.json({ success: true, message: "Booking approved successfully", booking: mapBooking(booking) });
+  }
   try {
     const { id } = req.params;
     const { data: booking, error: fe } = await s.from("bookings").select("*").eq("id", id).single();
-    if (fe || !booking) return res.status(404).json({ message: "Booking not found" });
+    if (fe || !booking) {
+      const fallbackBooking = fallbackBookings.get(id);
+      if (fallbackBooking) {
+        if (fallbackBooking.status === "rejected") return res.status(409).json({ message: "Rejected bookings cannot be approved" });
+        fallbackBooking.status = "approved";
+        fallbackBooking.approved_at = new Date().toISOString();
+        fallbackBooking.approved_by = req.admin.email;
+        delete fallbackBooking.rejected_at;
+        delete fallbackBooking.rejection_reason;
+        console.warn(`[APPROVAL] Database lookup failed, approved fallback booking ${id}:`, fe?.message);
+        return res.json({ success: true, message: "Booking approved successfully", booking: mapBooking(fallbackBooking) });
+      }
+      return res.status(404).json({ message: "Booking not found" });
+    }
     if (booking.status === "rejected") return res.status(409).json({ message: "Rejected bookings cannot be approved" });
     const { data, error } = await s.from("bookings").update({ status: "approved", approved_at: new Date().toISOString(), approved_by: req.admin.email }).eq("id", id).select().single();
-    if (error) return res.status(500).json({ message: error.message });
+    if (error || !data) {
+      const fallbackBooking = fallbackBookings.get(id);
+      if (fallbackBooking) {
+        if (fallbackBooking.status === "rejected") return res.status(409).json({ message: "Rejected bookings cannot be approved" });
+        fallbackBooking.status = "approved";
+        fallbackBooking.approved_at = new Date().toISOString();
+        fallbackBooking.approved_by = req.admin.email;
+        delete fallbackBooking.rejected_at;
+        delete fallbackBooking.rejection_reason;
+        console.warn(`[APPROVAL] Database update failed, approved fallback booking ${id}:`, error?.message);
+        return res.json({ success: true, message: "Booking approved successfully", booking: mapBooking(fallbackBooking) });
+      }
+      return res.status(500).json({ message: error?.message || "Failed to approve booking" });
+    }
     sendBookingConfirmationNotification(data).catch((e) => console.warn(`[WARNING] Notification failed for ${id}:`, e.message));
-    res.json({ success: true, message: "Booking approved successfully", booking: data });
-  } catch (error: any) { res.status(500).json({ message: "Failed to approve booking", error: error.message }); }
+    res.json({ success: true, message: "Booking approved successfully", booking: mapBooking(data) });
+  } catch (error: any) {
+    const fallbackBooking = fallbackBookings.get(req.params.id);
+    if (fallbackBooking) {
+      if (fallbackBooking.status === "rejected") return res.status(409).json({ message: "Rejected bookings cannot be approved" });
+      fallbackBooking.status = "approved";
+      fallbackBooking.approved_at = new Date().toISOString();
+      fallbackBooking.approved_by = req.admin.email;
+      delete fallbackBooking.rejected_at;
+      delete fallbackBooking.rejection_reason;
+      console.warn(`[APPROVAL] Database error, approved fallback booking ${req.params.id}:`, error.message);
+      return res.json({ success: true, message: "Booking approved successfully", booking: mapBooking(fallbackBooking) });
+    }
+    res.status(500).json({ message: "Failed to approve booking", error: error.message });
+  }
 });
 app.put("/api/book/:id/reject", verifyAdminToken, async (req, res) => {
   const s = getSupabase();
-  if (!s) return res.status(503).json({ message: "Database unavailable" });
-  const { id } = req.params;
-  const { data, error } = await s.from("bookings").update({ status: "rejected", rejection_reason: req.body.reason || "No reason provided", rejected_at: new Date().toISOString() }).eq("id", id).select().single();
-  if (error || !data) return res.status(404).json({ message: "Booking not found" });
-  res.json({ success: true, message: "Booking rejected", booking: data });
+  if (!s) {
+    const booking = fallbackBookings.get(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    booking.status = "rejected";
+    booking.rejection_reason = req.body.reason || "No reason provided";
+    booking.rejected_at = new Date().toISOString();
+    delete booking.approved_at;
+    delete booking.approved_by;
+    return res.json({ success: true, message: "Booking rejected", booking: mapBooking(booking) });
+  }
+  try {
+    const { id } = req.params;
+    const { data, error } = await s.from("bookings").update({ status: "rejected", rejection_reason: req.body.reason || "No reason provided", rejected_at: new Date().toISOString() }).eq("id", id).select().single();
+    if (error || !data) {
+      const fallbackBooking = fallbackBookings.get(id);
+      if (fallbackBooking) {
+        fallbackBooking.status = "rejected";
+        fallbackBooking.rejection_reason = req.body.reason || "No reason provided";
+        fallbackBooking.rejected_at = new Date().toISOString();
+        delete fallbackBooking.approved_at;
+        delete fallbackBooking.approved_by;
+        console.warn(`[REJECTION] Database update failed, rejected fallback booking ${id}:`, error?.message);
+        return res.json({ success: true, message: "Booking rejected", booking: mapBooking(fallbackBooking) });
+      }
+      return res.status(404).json({ message: "Booking not found" });
+    }
+    res.json({ success: true, message: "Booking rejected", booking: mapBooking(data) });
+  } catch (error: any) {
+    const fallbackBooking = fallbackBookings.get(req.params.id);
+    if (fallbackBooking) {
+      fallbackBooking.status = "rejected";
+      fallbackBooking.rejection_reason = req.body.reason || "No reason provided";
+      fallbackBooking.rejected_at = new Date().toISOString();
+      delete fallbackBooking.approved_at;
+      delete fallbackBooking.approved_by;
+      console.warn(`[REJECTION] Database error, rejected fallback booking ${req.params.id}:`, error.message);
+      return res.json({ success: true, message: "Booking rejected", booking: mapBooking(fallbackBooking) });
+    }
+    res.status(500).json({ message: "Failed to reject booking", error: error.message });
+  }
 });
 app.delete("/api/admin/bookings/:id", verifyAdminToken, async (req, res) => {
   const s = getSupabase();
-  if (!s) return res.status(503).json({ message: "Database unavailable" });
-  await s.from("bookings").delete().eq("id", req.params.id);
-  res.json({ message: "Booking deleted" });
+  if (!s) {
+    const deleted = fallbackBookings.delete(req.params.id);
+    if (!deleted) return res.status(404).json({ message: "Booking not found" });
+    return res.json({ message: "Booking deleted" });
+  }
+  try {
+    const { error } = await s.from("bookings").delete().eq("id", req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ message: "Booking deleted" });
+  } catch (error: any) {
+    const deleted = fallbackBookings.delete(req.params.id);
+    if (deleted) {
+      console.warn(`[DELETE] Database error, deleted fallback booking ${req.params.id}:`, error.message);
+      return res.json({ message: "Booking deleted" });
+    }
+    res.status(500).json({ message: "Failed to delete booking", error: error.message });
+  }
 });
 
 // Service CRUD (admin)

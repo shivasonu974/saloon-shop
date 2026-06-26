@@ -19,6 +19,21 @@ interface Booking {
   rejectionReason?: string;
 }
 
+const normalizeBooking = (booking: any): Booking => ({
+  id: booking.id,
+  customerName: booking.customerName ?? booking.customer_name ?? '',
+  customerEmail: booking.customerEmail ?? booking.customer_email ?? '',
+  customerPhone: booking.customerPhone ?? booking.customer_phone ?? '',
+  serviceTitle: booking.serviceTitle ?? booking.service_title ?? '',
+  serviceId: booking.serviceId ?? booking.service_id ?? '',
+  date: booking.date ?? '',
+  slot: booking.slot ?? '',
+  status: booking.status,
+  createdAt: booking.createdAt ?? booking.created_at,
+  approvedAt: booking.approvedAt ?? booking.approved_at,
+  rejectionReason: booking.rejectionReason ?? booking.rejection_reason,
+});
+
 const statusStyles: Record<BookingStatus, string> = {
   pending: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
   approved: 'bg-green-500/10 text-green-400 border-green-500/20',
@@ -56,7 +71,7 @@ export default function AdminBookings() {
 
     try {
       const token = localStorage.getItem('adminToken');
-      const response = await fetch('/api/bookings', {
+      const response = await fetch('/api/admin/bookings', {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -66,7 +81,7 @@ export default function AdminBookings() {
         throw new Error(data.message || 'Failed to fetch bookings');
       }
 
-      setBookings(data);
+      setBookings(Array.isArray(data) ? data.map(normalizeBooking) : []);
     } catch (err: any) {
       console.error('Failed to fetch bookings:', err);
       setError(err.message || 'Failed to fetch bookings');
@@ -93,7 +108,7 @@ export default function AdminBookings() {
         throw new Error(result.message || 'Failed to approve booking');
       }
 
-      setBookings((current) => current.map((booking) => (booking.id === id ? result.booking : booking)));
+      setBookings((current) => current.map((booking) => (booking.id === id ? normalizeBooking(result.booking) : booking)));
       setNotice('Booking approved. The user can now see: "Your booking is confirmed".');
     } catch (err: any) {
       console.error('Failed to approve booking:', err);
@@ -128,7 +143,7 @@ export default function AdminBookings() {
         throw new Error(result.message || 'Failed to reject booking');
       }
 
-      setBookings((current) => current.map((booking) => (booking.id === id ? result.booking : booking)));
+      setBookings((current) => current.map((booking) => (booking.id === id ? normalizeBooking(result.booking) : booking)));
       setNotice('Booking rejected.');
     } catch (err: any) {
       console.error('Failed to reject booking:', err);
